@@ -9,141 +9,170 @@
 #include <stdio.h>
 #include "maze.h"
 
-Maze::Cell* Maze::newCell(Maze::Cell *cell, const size_t &row, const size_t &column) {
-    cell->row = row;
-    cell->column = column;
-    cell->marked = false;
-    cell->value = 0;
-    cell->speed = 0;
-    return cell;
-}
+#include <iostream>
 
 Maze::Maze(vector<string> maze) {
+    // Maze is an input data
     rowCount = maze.size();
     columnCount = maze[0].length();
+    // Field is a maze of logical cells (contain speed, status etc.)
     field.resize(rowCount);
     for (int i = 0; i < rowCount; ++i) {
         field[i].resize(columnCount);
     }
-    
     for (size_t i = 0; i < rowCount; ++i) {
         for (size_t j = 0; j < columnCount; ++j) {
-            Cell *cell = Maze::newCell(&field[i][j], i, j);
+            Cell *cell = Cell::newCell(&field[i][j], i, j);
             switch (maze[i][j]) {
                 case '#':
-                    cell->status = Maze::Status::BORDER;
+                    cell->setStatus(Status::BORDER);
                     break;
                 case ' ':
-                    cell->status = Maze::Status::EMPTY;
-                    cell->speed = 1;
+                    cell->setStatus(Status::EMPTY);
+                    cell->setSpeed(1);
                     break;
                 case '.':
-                    cell->status = Maze::Status::SAND;
-                    cell->speed = 1.5;
+                    cell->setStatus(Status::SAND);
+                    cell->setSpeed(2);
                     break;
                 case 's':
-                    cell->status = Maze::Status::FINISH;
+                    cell->setStatus(Status::START);
+                    setStartPosition(i, j); // Set start position for solving
                     break;
                 default:
-                    throw "Undefined symbol";
+                    throw string("Undefined symbol");
                     break;
             }
         }
     }
+    if (!solvability()) {
+        throw string("This maze is impassable");
+    }
+//    result = propagation(rowStart, columnStart, field, vector<Cell>());
 }
 
-
-
-void Maze::setStartPoint(const size_t &row, const size_t &column) {
-    rowStartPoint = row;
-    columnStartPoint = column;
+bool Maze::solvability() const {
+    for (int j = 0; j < columnCount; ++j) {
+        if (field[0][j].getStatus() != Status::BORDER ||
+            field[rowCount - 1][j].getStatus() != Status::BORDER) {
+            return true;
+        }
+    }
+    for (int i = 0; i < rowCount; ++i) {
+        if (field[i][0].getStatus() != Status::BORDER ||
+            field[i][columnCount - 1].getStatus() != Status::BORDER) {
+            return true;
+        }
+    }
+    return false; // This maze is impassable :(
 }
 
-void Maze::propagation() {
-//    ЦИКЛ
-//    ДЛЯ каждой ячейки loc, помеченной числом d
-//    пометить все соседние свободные не помеченные ячейки числом d + 1
-//    КЦ
-//    d := d + 1
-//    ПОКА (финишная ячейка не помечена) И (есть возможность распространения волны, шаг < количества ячеек)
-    
+void Maze::setStartPosition(const short &row, const short &column) {
+    rowStart = row;
+    columnStart = column;
 }
 
-Maze::Result Maze::solve(size_t rowStart, size_t columnStart, vector<vector<Maze::Cell>> maze, vector<Cell> route) {
-    Cell *startCell = &field[rowStart][columnStart];
-    if (startCell->status == Status::FINISH) {
-        Result result;
-        result.route = route;
-        result.distance = startCell->value;
-        return result;
+bool Maze::isExit(const short &row, const short &col) const {
+    // The position is an exit, if it is in the border
+    if (row == 0 || row == rowCount - 1
+        || col == 0 || col == columnCount - 1) {
+        return true;
+    }
+    return false;
+}
+
+Result Maze::solve() {
+    return propagation(rowStart, columnStart, field, vector<Cell>());
+}
+
+Result Maze::propagation(short rowBegin, short columnBegin, vector<vector<Cell>> maze, vector<Cell> route) {
+    Cell *startCell = &maze[rowBegin][columnBegin];
+    startCell->setVisited(true);
+    if (startCell->getStatus() != Status::START) {
+        route.push_back(*startCell); // We shouldn't select the start position '*'
     }
     vector<Result> results;
-    results.resize(4);
-    if ((rowStart + 1) != rowCount - 1) {
-        Cell *cell = &maze[rowStart + 1][columnStart];
-        if (cell->status != Status::BORDER) {
-            cell->value = startCell->value + cell->speed;
-            Result result = solve(rowStart + 1, columnStart, maze, route);
+    bool impasse = true; // If all the cells around are visited or border, we consider that this cell is impasse
+    if ((rowBegin + 1) <= rowCount - 1) { // Down cell
+        Cell *cell = &maze[rowBegin + 1][columnBegin];
+        if (cell->getStatus() != Status::BORDER && !cell->getVisited()) { // We shouldn't look at the border or visited cells
+            cell->setValue(startCell->getValue() + cell->getSpeed());
+            impasse = false;
+            if (isExit(cell->getRow(), cell->getColumn())) {
+                Result result; // The cell is an exit
+                route.push_back(*cell);
+                result.route = route;
+                result.distance = cell->getValue();
+                results.push_back(result);
+                goto end; // Summing up...
+            }
+            Result result = propagation(cell->getRow(), cell->getColumn(), maze, route);
             results.push_back(result);
         }
     }
-    if ((columnStart + 1) != columnCount - 1) {
-        Cell *cell = &maze[rowStart][columnStart + 1];
-        if (cell->status != Status::BORDER) {
-            cell->value = startCell->value + cell->speed;
-            Result result = solve(rowStart, columnStart + 1, maze, route);
+    if ((columnBegin + 1) <= columnCount - 1) { // Right cell
+        Cell *cell = &maze[rowBegin][columnBegin + 1];
+        if (cell->getStatus() != Status::BORDER && !cell->getVisited()) {
+            cell->setValue(startCell->getValue() + cell->getSpeed());
+            impasse = false;
+            if (isExit(cell->getRow(), cell->getColumn())) {
+                Result result;
+                route.push_back(*cell);
+                result.route = route;
+                result.distance = cell->getValue();
+                results.push_back(result);
+                goto end;
+            }
+            Result result = propagation(cell->getRow(), cell->getColumn(), maze, route);
             results.push_back(result);
         }
     }
-    if ((rowStart - 1) != 0) {
-        Cell *cell = &maze[rowStart - 1][columnStart];
-        if (cell->status != Status::BORDER) {
-            cell->value = startCell->value + cell->speed;
-            Result result = solve(rowStart - 1, columnStart, maze, route);
+    if ((rowBegin - 1) >= 0) { // Up cell
+        Cell *cell = &maze[rowBegin - 1][columnBegin];
+        if (cell->getStatus() != Status::BORDER && !cell->getVisited()) {
+            cell->setValue(startCell->getValue() + cell->getSpeed());
+            impasse = false;
+            if (isExit(cell->getRow(), cell->getColumn())) {
+                Result result;
+                route.push_back(*cell);
+                result.route = route;
+                result.distance = cell->getValue();
+                results.push_back(result);
+                goto end;
+            }
+            Result result = propagation(cell->getRow(), cell->getColumn(), maze, route);
             results.push_back(result);
         }
     }
-    if ((columnStart - 1) != 0) {
-        Cell *cell = &maze[rowStart][columnStart - 1];
-        if (cell->status != Status::BORDER) {
-            cell->value = startCell->value + cell->speed;
-            Result result = solve(rowStart, columnStart - 1, maze, route);
+    if ((columnBegin - 1) >= 0) { // Left cell
+        Cell *cell = &maze[rowBegin][columnBegin - 1];
+        if (cell->getStatus() != Status::BORDER && !cell->getVisited()) {
+            cell->setValue(startCell->getValue() + cell->getSpeed());
+            impasse = false;
+            if (isExit(cell->getRow(), cell->getColumn())) {
+                Result result;
+                route.push_back(*cell);
+                result.route = route;
+                result.distance = cell->getValue();
+                results.push_back(result);
+                goto end;
+            }
+            Result result = propagation(cell->getRow(), cell->getColumn(), maze, route);
             results.push_back(result);
         }
     }
+    if (impasse) {
+        Result result;
+        // We can't achive the exit position from this cell (distance is machine infinity)
+        result.distance = std::numeric_limits<float>::max(); // Impassive situation... :(
+        return result;
+    }
+end:
+    // We need to find shortest distance to the exit position
+    auto result = *std::min_element(results.begin(), results.end(), [](const Result &res1, const Result &res2) {
+        return res1.distance < res2.distance;
+    });
+    return result;
 }
 
-void Maze::recovery() {
-//    ЕСЛИ финишная ячейка помечена
-//    ТО
-//    перейти в финишную ячейк у
-//    ЦИКЛ
-//    выбрать среди соседних ячейку, помеченную числом на 1 меньше числа в текущей ячейке
-//    перейти в выбранную ячейку и добавить её к пути
-//    ПОКА текущая ячейка — не стартовая
-//    ВОЗВРАТ путь найден
-//    ИНАЧЕ
-//    ВОЗВРАТ путь не найден
-    
-}
-
-
-
-//vector<string> Maze::solve() {
-//    scan();
-//    initialize();
-//    propagation();
-//    recovery();
-//    vector<string> a;
-//    return a;
-//}
-
-vector<Cell> Maze::solve(int rowStart, int columnStart, vector<string> maze) {
-    
-}
-Maze::~Maze() {
-//    for (int i = 0; i < rowCount; ++i) {
-//        delete[] field[i];
-//    }
-//    delete[] field;
-}
+Maze::~Maze() { /* Just destructor :) */ }

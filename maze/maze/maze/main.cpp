@@ -8,22 +8,36 @@
 
 #include <iostream>
 #include "maze.h"
-
 using std::cin;
 using std::cout;
 using std::endl;
 
+
 int main(int argc, const char * argv[]) {
-    vector<string> lab;
-    for (int i = 0; i < 4; ++i) {
-        string str;
-        getline(cin, str);
-        lab.push_back(str);
+    vector<string> maz;
+    string line;
+    while (getline(cin, line)) {
+        maz.push_back(line);
     }
-    Maze maze(lab);
-    lab = maze.solve();
-    for (int i = 0; i < lab.size(); ++i) {
-        cout << lab[i] << endl;
+    try {
+        Maze maze(maz);
+        Result result = maze.solve();
+        if (result.distance == std::numeric_limits<float>::max()) {
+            throw string("Maze is impassable");
+        }
+        for (Cell cell : result.route) {
+            maz[cell.getRow()][cell.getColumn()] = '*';
+        }
+        cout << endl;
+        for (string line : maz) {
+            cout << line << endl;
+        }
+    }
+    catch(string err) {
+        if (err == "Maze is impassable") {
+            return 1;
+        }
+        cout << err << endl;
     }
     return 0;
 }
